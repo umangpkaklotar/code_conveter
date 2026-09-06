@@ -27,6 +27,16 @@ p { color:var(--muted); }
 .code-title { flex-wrap: wrap; }
 .code-hint { margin-left: auto; color: #71839c; font-size: 10px; }
 .output-box { border-color: #3e6190; box-shadow: inset 0 2px 0 #63d9e833; }
+.explanation-panel { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #080f1c; }
+.explanation-panel p { margin: 10px 0 0; line-height: 1.6; }
+.history-actions { display: flex; gap: 8px; }
+.view-history { padding: 7px 11px; border: 1px solid #63d9e855; border-radius: 7px; color: var(--cyan); background: transparent; font-size: 12px; }
+.history-details { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: 100%; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--line); }
+.history-details > div:last-child { grid-column: 1 / -1; }
+.history-details span { color: var(--cyan); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.history-details pre { max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 12px; border-radius: 8px; color: #dce8f7; background: #080f1c; white-space: pre-wrap; font: 12px/1.5 monospace; }
+.history-details p { margin: 8px 0 0; line-height: 1.6; }
+.history-item { flex-wrap: wrap; }
 .profile-edit-card { margin-top: 18px; padding: 28px; border: 1px solid var(--line); border-radius: 18px; background: #101827cc; }
 .profile-edit-card h2 { margin: 0 0 18px; font-size: 20px; }
 .profile-edit-card label { display: block; margin: 15px 0 7px; color: #b9c5d6; font-size: 13px; font-weight: 600; }

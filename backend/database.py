@@ -39,10 +39,19 @@ def _initialize_database():
                 target_language TEXT NOT NULL,
                 input_code TEXT NOT NULL,
                 converted_code TEXT NOT NULL,
+                explanation TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             );
             """
         )
+        columns = {
+            row[1]
+            for row in _connection.execute("PRAGMA table_info(conversions)").fetchall()
+        }
+        if "explanation" not in columns:
+            _connection.execute(
+                "ALTER TABLE conversions ADD COLUMN explanation TEXT NOT NULL DEFAULT ''"
+            )
         _connection.commit()
 
 

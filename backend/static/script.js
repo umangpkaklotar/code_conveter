@@ -170,6 +170,7 @@ async function initConverter() {
         $("inputCode").value = "";
         $("outputCode").value = "";
         $("outputCode").dataset.fullCode = "";
+        if ($("explanationText")) $("explanationText").textContent = "The explanation will appear after conversion.";
         updateOutputProgress(0, 0);
         $("statusMessage").textContent = "";
     });
@@ -188,6 +189,7 @@ async function initConverter() {
         try {
             const data = await responseData(await fetch("/convert", { method: "POST", headers: headers(), body: JSON.stringify({ source_language: source, target_language: target, code }) }));
             animateOutputCode(data.converted_code);
+            if ($("explanationText")) $("explanationText").textContent = data.explanation || "No explanation was returned.";
             status.textContent = "Conversion complete. Writing the result line by line...";
         }
         catch (error) { status.textContent = error.message; if (error.message.toLowerCase().includes("token")) logout(); }
@@ -233,11 +235,20 @@ async function loadHistory() {
         if (!data.data.length) { list.innerHTML = '<p class="empty-history">No conversions yet. Your saved work will appear here.</p>'; return; }
         data.data.forEach((item) => {
             const row = document.createElement("article"); row.className = "history-item";
-            row.innerHTML = `<div class="history-info"><strong>${item.source_language} <span>→</span> ${item.target_language}</strong><small>${item.created_at || ""}</small></div><button class="delete-history">Delete</button>`;
+            row.innerHTML = `<div class="history-info"><strong>${item.source_language} <span>→</span> ${item.target_language}</strong><small>${item.created_at || ""}</small></div><div class="history-actions"><button class="view-history">View code</button><button class="delete-history">Delete</button></div><div class="history-details hidden"><div><span>Input code</span><pre>${escapeHtml(item.input_code || "")}</pre></div><div><span>Converted code</span><pre>${escapeHtml(item.converted_code || "")}</pre></div><div><span>Explanation</span><p>${escapeHtml(item.explanation || "No explanation saved for this conversion.")}</p></div></div>`;
+            row.querySelector(".view-history").addEventListener("click", () => {
+                const details = row.querySelector(".history-details");
+                details.classList.toggle("hidden");
+                row.querySelector(".view-history").textContent = details.classList.contains("hidden") ? "View code" : "Hide code";
+            });
             row.querySelector(".delete-history").addEventListener("click", async () => { if (confirm("Delete this conversion?")) { await fetch(`/history/${item._id}`, { method: "DELETE", headers: headers() }); loadHistory(); } });
             list.appendChild(row);
         });
     } catch (error) { list.innerHTML = `<p class="empty-history">${error.message}</p>`; }
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 }
 
 if ($("authContainer")) initAuthPage();
