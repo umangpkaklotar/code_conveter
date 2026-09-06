@@ -22,6 +22,10 @@ class FakeInteraction:
     output_text = '{"detected_language":"Python", "converted_code":"print(\\"hello\\")", "explanation":"Summary:\\n- Prints a greeting."}'
 
 
+class FakeConversionInteraction:
+    output_text = '{"converted_code":"```javascript\\nconsole.log(\\"hello\\");\\n```", "explanation":"Summary:\\n- Converted the greeting.\\n\\nImportant changes:\\n- Used JavaScript syntax.\\n\\nHow to run:\\n- Run with Node.js."}'
+
+
 class FakeClient:
     class interactions:
         @staticmethod
@@ -29,6 +33,14 @@ class FakeClient:
             FakeClient.last_prompt = input
             FakeClient.last_model = model
             return FakeInteraction()
+
+
+class FakeConversionClient:
+    class interactions:
+        @staticmethod
+        def create(model, input):
+            FakeConversionClient.last_prompt = input
+            return FakeConversionInteraction()
 
 
 def test_generate_code_parses_gemini_json(monkeypatch):
@@ -41,6 +53,16 @@ def test_generate_code_parses_gemini_json(monkeypatch):
     assert "Summary:" in result["explanation"]
     assert "Print hello in Python" in FakeClient.last_prompt
     assert "identify the programming language" in FakeClient.last_prompt
+
+
+def test_convert_code_removes_fences_and_requires_complete_output(monkeypatch):
+    monkeypatch.setattr(code_converter, "client", FakeConversionClient())
+
+    result = code_converter.convert_code("Python", "JavaScript", 'print("hello")')
+
+    assert result["converted_code"] == 'console.log("hello");'
+    assert "complete, runnable" in FakeConversionClient.last_prompt
+    assert "How to run:" in result["explanation"]
 
 
 def test_generate_endpoint_saves_prompt_and_result(monkeypatch):

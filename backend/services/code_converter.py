@@ -19,7 +19,7 @@ def convert_code(source_language, target_language, code):
     prompt = f"""
 You are an expert programming language code converter.
 
-Convert the given {source_language} code into {target_language}.
+Convert the complete {source_language} code into {target_language}.
 
 Rules:
 
@@ -27,9 +27,10 @@ Rules:
 2. Use correct {target_language} syntax.
 3. Follow best practices of {target_language}.
 4. Return one valid JSON object with exactly two keys: converted_code and explanation.
-5. converted_code must contain only the converted code, with no Markdown fences.
-6. explanation must be a complete, beginner-friendly explanation covering the overall approach, important line or block changes, syntax differences, and how the converted code works.
-7. Do not add text outside the JSON object.
+5. converted_code must be complete, runnable code and contain no Markdown fences, labels, or commentary.
+6. Check for missing imports, undefined variables, invalid syntax, and incomplete functions before returning it.
+7. explanation must be plain text with Summary:, Important changes:, and How to run: sections. Use short bullets, not one long paragraph.
+8. Do not add text outside the JSON object.
 
 Source Language: {source_language}
 
@@ -48,16 +49,24 @@ Source Code:
     raw_output = interaction.output_text.strip()
     try:
         result = json.loads(raw_output)
+        converted_code = str(result.get("converted_code", "")).strip()
+        if converted_code.startswith("```"):
+            converted_code = converted_code.split("\n", 1)[1] if "\n" in converted_code else converted_code
+            converted_code = converted_code.rsplit("```", 1)[0].strip()
         return {
-            "converted_code": str(result.get("converted_code", "")),
-            "explanation": str(result.get("explanation", "")),
+            "converted_code": converted_code,
+            "explanation": str(result.get("explanation", "")).strip(),
         }
     except (json.JSONDecodeError, TypeError):
         return {
             "converted_code": raw_output,
             "explanation": (
-                f"The code was converted from {source_language} to {target_language}. "
-                "Review the translated syntax and runtime-specific behavior before using it in production."
+                "Summary:\n"
+                f"- Converted the complete program from {source_language} to {target_language}.\n\n"
+                "Important changes:\n"
+                "- Review library-specific behavior and input/output differences.\n\n"
+                "How to run:\n"
+                "- Save the code with the correct file extension and run it with the target runtime."
             ),
         }
 
