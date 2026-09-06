@@ -14,6 +14,18 @@ function logout() {
     window.location.href = "/";
 }
 
+function addGeneratorLink() {
+    const navigation = document.querySelector(".main-nav");
+    if (!navigation || navigation.querySelector('a[href="/generate"]')) return;
+    const link = document.createElement("a");
+    link.className = "nav-link";
+    link.href = "/generate";
+    link.textContent = "Generate";
+    navigation.insertBefore(link, navigation.children[1] || null);
+}
+
+addGeneratorLink();
+
 const logoutButton = $("logoutButton");
 if (logoutButton) logoutButton.addEventListener("click", logout);
 
@@ -197,6 +209,69 @@ async function initConverter() {
     });
 }
 
+async function initGenerator() {
+    await loadUser();
+    const prompt = $("generationPrompt");
+    const button = $("generateButton");
+    const status = $("generationStatus");
+    const output = $("generatedCode");
+    const explanation = $("generatedExplanation");
+    const copyButton = $("copyGeneratedButton");
+
+    copyButton.addEventListener("click", async () => {
+        const code = output.dataset.fullCode || "";
+        if (!code) return;
+        await navigator.clipboard.writeText(code);
+        copyButton.textContent = "Copied";
+        setTimeout(() => { copyButton.textContent = "Copy code"; }, 1200);
+    });
+    button.addEventListener("click", async () => {
+        if (!prompt.value.trim()) return (status.textContent = "Describe the code you want to build first.");
+        button.disabled = true;
+        status.textContent = "AI is turning your idea into code...";
+        output.textContent = "";
+        explanation.innerHTML = '<p class="loading-copy">Thinking through the best implementation...</p>';
+        try {
+            const data = await responseData(await fetch("/generate", {
+                method: "POST",
+                headers: headers(),
+                body: JSON.stringify({ prompt: prompt.value })
+            }));
+            output.dataset.fullCode = data.converted_code || "";
+            output.textContent = data.converted_code || "No code was returned.";
+            explanation.innerHTML = formatExplanation(data.explanation);
+            $("generationLanguageLabel").textContent = data.detected_language || "Language detected";
+            $("generationProgress").textContent = "Complete";
+            status.textContent = "Done — this generation is saved in your history.";
+        } catch (error) {
+            status.textContent = error.message;
+            if (error.message.toLowerCase().includes("token")) logout();
+        } finally { button.disabled = false; }
+    });
+}
+
+function formatExplanation(text) {
+    const wrapper = document.createElement("div");
+    String(text || "No explanation was returned.").split(/\n+/).forEach((line) => {
+        const clean = line.trim();
+        if (!clean) return;
+        if (clean.endsWith(":")) {
+            const heading = document.createElement("h4");
+            heading.textContent = clean.slice(0, -1);
+            wrapper.appendChild(heading);
+        } else {
+            const item = document.createElement(clean.startsWith("-") ? "li" : "p");
+            item.textContent = clean.replace(/^-\s*/, "");
+            if (item.tagName === "LI") {
+                let list = wrapper.lastElementChild;
+                if (!list || list.tagName !== "UL") { list = document.createElement("ul"); wrapper.appendChild(list); }
+                list.appendChild(item);
+            } else wrapper.appendChild(item);
+        }
+    });
+    return wrapper.innerHTML;
+}
+
 function stopOutputAnimation() {
     if (outputAnimationTimer) {
         clearInterval(outputAnimationTimer);
@@ -235,11 +310,19 @@ async function loadHistory() {
         if (!data.data.length) { list.innerHTML = '<p class="empty-history">No conversions yet. Your saved work will appear here.</p>'; return; }
         data.data.forEach((item) => {
             const row = document.createElement("article"); row.className = "history-item";
-            row.innerHTML = `<div class="history-info"><strong>${item.source_language} <span>→</span> ${item.target_language}</strong><small>${item.created_at || ""}</small></div><div class="history-actions"><button class="view-history">View code</button><button class="delete-history">Delete</button></div><div class="history-details hidden"><div><span>Input code</span><pre>${escapeHtml(item.input_code || "")}</pre></div><div><span>Converted code</span><pre>${escapeHtml(item.converted_code || "")}</pre></div><div><span>Explanation</span><p>${escapeHtml(item.explanation || "No explanation saved for this conversion.")}</p></div></div>`;
+            row.innerHTML = `<div class="history-info"><strong>${item.source_language} <span>→</span> ${item.target_language}</strong><small>${item.created_at || ""}</small></div><div class="history-actions"><button class="view-history">View code</button><button class="delete-history">Delete</button></div><div class="history-details hidden"><div><div class="detail-heading"><span>Input code</span><button class="copy-detail" data-copy="input">Copy</button></div><pre class="history-code input-detail">${escapeHtml(item.input_code || "")}</pre></div><div><div class="detail-heading"><span>Converted code</span><button class="copy-detail" data-copy="converted">Copy</button></div><pre class="history-code converted-detail">${escapeHtml(item.converted_code || "")}</pre></div><div><span>Full explanation</span><p class="history-explanation">${escapeHtml(item.explanation || "No explanation saved for this conversion.")}</p></div></div>`;
             row.querySelector(".view-history").addEventListener("click", () => {
                 const details = row.querySelector(".history-details");
                 details.classList.toggle("hidden");
                 row.querySelector(".view-history").textContent = details.classList.contains("hidden") ? "View code" : "Hide code";
+            });
+            row.querySelectorAll(".copy-detail").forEach((button) => {
+                button.addEventListener("click", async () => {
+                    const selector = button.dataset.copy === "input" ? ".input-detail" : ".converted-detail";
+                    await navigator.clipboard.writeText(row.querySelector(selector).textContent);
+                    button.textContent = "Copied";
+                    setTimeout(() => { button.textContent = "Copy"; }, 1200);
+                });
             });
             row.querySelector(".delete-history").addEventListener("click", async () => { if (confirm("Delete this conversion?")) { await fetch(`/history/${item._id}`, { method: "DELETE", headers: headers() }); loadHistory(); } });
             list.appendChild(row);
@@ -253,6 +336,7 @@ function escapeHtml(value) {
 
 if ($("authContainer")) initAuthPage();
 if ($("convertButton")) initConverter().catch(logout);
+if ($("generateButton")) initGenerator().catch(logout);
 if ($("historyList")) {
     $("clearHistoryButton").addEventListener("click", async () => { if (confirm("Clear all conversion history?")) { await fetch("/history", { method: "DELETE", headers: headers() }); loadHistory(); } });
     loadHistory();

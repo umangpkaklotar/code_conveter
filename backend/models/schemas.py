@@ -5,3 +5,7 @@ class CodeConversionRequest(BaseModel):
     source_language: str
     target_language: str
     code: str
+
+
+class CodeGenerationRequest(BaseModel):
+    prompt: str

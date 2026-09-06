@@ -1,22 +1,21 @@
+"""Manual Gemini smoke test.
+
+Run this file directly when a valid GEMINI_API_KEY is configured. Keeping the
+API call behind the main guard prevents pytest collection from making a live
+request.
+"""
+
 import os
+
 from dotenv import load_dotenv
 from google import genai
 
 
-# Load .env file
-load_dotenv()
-
-
-# Get API key from .env
-api_key = os.getenv("GEMINI_API_KEY")
-
-
-# Create Gemini client
-client = genai.Client(api_key=api_key)
-
-
-# Prompt for code conversion
-prompt = """
+if __name__ == "__main__":
+    load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
+    prompt = """
 You are an expert programming code converter.
 
 Convert the following Python code into JavaScript.
@@ -31,14 +30,8 @@ Rules:
 Python Code:
 print("Hello World")
 """
-
-
-# Send request to Gemini
-interaction = client.interactions.create(
-    model="gemini-3.6-flash",
-    input=prompt
-)
-
-
-# Print converted code
-print(interaction.output_text)
+    interaction = client.interactions.create(
+        model="gemini-3.6-flash",
+        input=prompt
+    )
+    print(interaction.output_text)

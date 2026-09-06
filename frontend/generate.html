@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate · CodeShift</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="app-shell">
+    <header class="site-header">
+        <a class="brand" href="/converter"><span class="brand-icon">✦</span><span>Code<span>Shift</span></span></a>
+        <nav class="main-nav">
+            <a class="nav-link" href="/converter">Converter</a>
+            <a class="nav-link active" href="/generate">Generate</a>
+            <a class="nav-link" href="/profile">Profile</a>
+            <a class="nav-link" href="/history-page">History</a>
+        </nav>
+        <div class="header-user"><span class="user-dot">●</span><span id="headerUserName">Account</span><button id="logoutButton" class="logout-button">Log out</button></div>
+    </header>
+
+    <main class="page-container generator-page">
+        <section class="page-heading">
+            <div>
+                <p class="eyebrow">AI CODE GENERATOR</p>
+                <h1>Describe it.<br><span class="heading-accent">Build it.</span></h1>
+                <p>Tell AI what you want to create and get clean, ready-to-use code with a practical explanation.</p>
+            </div>
+            <div class="heading-badge">✦ Prompt to code</div>
+        </section>
+
+        <section class="generator-layout">
+            <div class="generator-card">
+                <div class="generator-card-heading">
+                    <div><span class="step-number">01</span><div><h2>Your request</h2><p>Be specific about the behavior, inputs, and output.</p></div></div>
+                </div>
+                <label for="generationPrompt">What should I build?</label>
+                <textarea id="generationPrompt" class="prompt-input" placeholder="Example: Build a Python FastAPI endpoint that accepts a list of numbers and returns the median, with validation and a short usage example."></textarea>
+                <div class="generator-options">
+                    <p class="language-auto-note">The language will be detected from your prompt automatically.</p>
+                    <button id="generateButton" class="primary-button generate-button">Generate code <span>→</span></button>
+                </div>
+                <p id="generationStatus" class="status-text" role="status"></p>
+            </div>
+
+            <div class="generator-card result-card">
+                <div class="result-heading"><div><span class="step-number">02</span><div><h2>Generated code</h2><p>Your result is saved automatically in History.</p></div></div><button id="copyGeneratedButton" class="copy-detail">Copy code</button></div>
+                <div class="generated-code-wrap"><div class="result-meta"><span id="generationLanguageLabel">Language detected after generation</span><span id="generationProgress">Ready</span></div><pre id="generatedCode" class="generated-code">Your generated code will appear here.</pre></div>
+                <div class="explanation-panel generator-explanation"><h3>Code explanation</h3><div id="generatedExplanation" class="structured-explanation"><p>After generation, you’ll see the approach, key decisions, and how to run the code.</p></div></div>
+            </div>
+        </section>
+    </main>
+    <script src="/static/script.js"></script>
+</body>
+</html>

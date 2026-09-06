@@ -19,7 +19,8 @@ from backend.database import (
 
 
 from backend.models.schemas import (
-    CodeConversionRequest
+    CodeConversionRequest,
+    CodeGenerationRequest
 )
 
 
@@ -32,7 +33,8 @@ from backend.models.user_schemas import (
 
 
 from backend.services.code_converter import (
-    convert_code
+    convert_code,
+    generate_code
 )
 
 
@@ -179,6 +181,11 @@ def favicon():
 @app.get("/converter")
 def converter_page():
     return FileResponse("frontend/converter.html")
+
+
+@app.get("/generate")
+def generate_page():
+    return FileResponse("frontend/generate.html")
 
 
 @app.get("/profile")
@@ -419,7 +426,7 @@ def convert(
     )
 
 
-    converted_code = (
+    conversion_result = (
         convert_code(
 
             source_language=
@@ -433,6 +440,15 @@ def convert(
 
         )
     )
+    if isinstance(conversion_result, dict):
+        converted_code = conversion_result.get("converted_code", "")
+        explanation = conversion_result.get("explanation", "")
+    else:
+        converted_code = str(conversion_result)
+        explanation = (
+            f"The code was converted from {request.source_language} to "
+            f"{request.target_language}."
+        )
 
 
     conversion_data = {
@@ -451,6 +467,9 @@ def convert(
 
         "converted_code":
             converted_code,
+
+        "explanation":
+            explanation,
 
         "created_at":
             datetime.utcnow()
@@ -476,7 +495,10 @@ def convert(
             ),
 
         "converted_code":
-            converted_code
+            converted_code,
+
+        "explanation":
+            explanation
 
     }
 
@@ -647,4 +669,44 @@ def clear_history(
         "deleted_count":
             result.deleted_count
 
+    }
+
+
+# ==========================
+# GENERATE CODE FROM PROMPT
+# ==========================
+
+@app.post("/generate")
+def generate(
+    request: CodeGenerationRequest,
+    authorization: str = Header(None),
+):
+    payload = require_token(authorization)
+    user_id = payload.get("user_id")
+
+    if not request.prompt.strip():
+        raise HTTPException(status_code=400, detail="Please describe the code you want to generate")
+    generation_result = generate_code(
+        prompt=request.prompt,
+    )
+    detected_language = generation_result.get("detected_language", "Unknown")
+    generated_code = generation_result.get("converted_code", "")
+    explanation = generation_result.get("explanation", "")
+
+    result = conversions_collection.insert_one({
+        "user_id": user_id,
+        "source_language": "Prompt",
+        "target_language": detected_language,
+        "input_code": request.prompt,
+        "converted_code": generated_code,
+        "explanation": explanation,
+        "created_at": datetime.utcnow(),
+    })
+
+    return {
+        "message": "Code generated successfully",
+        "conversion_id": str(result.inserted_id),
+        "detected_language": detected_language,
+        "converted_code": generated_code,
+        "explanation": explanation,
     }
