@@ -25,7 +25,9 @@ from backend.models.schemas import (
 
 from backend.models.user_schemas import (
     UserRegister,
-    UserLogin
+    UserLogin,
+    UserUpdate,
+    PasswordReset
 )
 
 
@@ -166,21 +168,86 @@ def home():
     )
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(
+        "backend/static/favicon.svg",
+        media_type="image/svg+xml",
+    )
+
+
 @app.get("/converter")
 def converter_page():
     return FileResponse("frontend/converter.html")
 
 
 @app.get("/profile")
-def profile_page_or_api(authorization: str = Header(None)):
-    if not authorization:
-        return FileResponse("frontend/profile.html")
+def profile_page():
+    return FileResponse("frontend/profile.html")
 
+
+@app.get("/profile/forgot-password")
+def forgot_password_page():
+    return FileResponse("frontend/forgot-password.html")
+
+
+@app.get("/api/profile")
+def profile_api(authorization: str = Header(None)):
     payload = require_token(authorization)
     user = users_collection.find_one({"_id": payload.get("user_id")})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"name": user["name"], "email": user["email"]}
+    return {
+        "id": str(user["_id"]),
+        "name": user["name"],
+        "email": user["email"],
+        "created_at": user["created_at"],
+    }
+
+
+@app.put("/api/profile")
+def update_profile(user_update: UserUpdate, authorization: str = Header(None)):
+    payload = require_token(authorization)
+    user = users_collection.find_one({"_id": payload.get("user_id")})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user_update.new_password and not user_update.current_password:
+        raise HTTPException(status_code=400, detail="Current password is required to set a new password")
+    if user_update.new_password and not verify_password(user_update.current_password, user["password"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if user_update.new_password and len(user_update.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+
+    duplicate = users_collection.find_one({"email": user_update.email})
+    if duplicate and str(duplicate["_id"]) != str(user["_id"]):
+        raise HTTPException(status_code=400, detail="Email is already registered")
+
+    updates = {"name": user_update.name, "email": user_update.email}
+    if user_update.new_password:
+        updates["password"] = hash_password(user_update.new_password)
+    try:
+        users_collection.update_one({"_id": user["_id"]}, {"$set": updates})
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Could not update profile: {error}")
+
+    return {"message": "Profile updated successfully", "name": user_update.name, "email": user_update.email}
+
+
+@app.post("/api/forgot-password")
+def forgot_password(reset: PasswordReset):
+    if len(reset.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+
+    user = users_collection.find_one({"email": reset.email})
+    if not user:
+        raise HTTPException(status_code=404, detail="No account exists with that email address")
+
+    users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password": hash_password(reset.new_password)}},
+    )
+    return {"message": "Password changed successfully. You can now sign in."}
 
 
 @app.get("/history-page")

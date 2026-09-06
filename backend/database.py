@@ -143,6 +143,19 @@ class SQLiteCollection:
             _connection.commit()
         return DeleteResult(cursor.rowcount)
 
+    def update_one(self, query, updates):
+        where, where_values = self._where(query)
+        fields = updates.get("$set", updates)
+        assignments = ", ".join(f"{key} = ?" for key in fields)
+        values = [self._value(value) for value in fields.values()]
+        with _lock:
+            cursor = _connection.execute(
+                f"UPDATE {self.table_name} SET {assignments} WHERE {where}",
+                values + where_values,
+            )
+            _connection.commit()
+        return DeleteResult(cursor.rowcount)
+
 
 _initialize_database()
 

@@ -1,6 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const token = () => localStorage.getItem("token");
 const headers = () => ({ "Content-Type": "application/json", ...(token() ? { Authorization: `Bearer ${token()}` } : {}) });
+let outputAnimationTimer = null;
 
 async function responseData(response) {
     const data = await response.json().catch(() => ({}));
@@ -21,14 +22,102 @@ async function loadUser() {
         window.location.href = "/";
         return null;
     }
-    const user = await responseData(await fetch("/profile", { headers: headers() }));
+    const user = await responseData(await fetch("/api/profile", { headers: headers() }));
     const name = $("headerUserName");
     if (name) name.textContent = user.name || "Account";
     const profileName = $("profileName");
     const profileEmail = $("profileEmail");
     if (profileName) profileName.textContent = user.name;
     if (profileEmail) profileEmail.textContent = user.email;
+    const profileCreated = $("profileCreated");
+    if (profileCreated) profileCreated.textContent = `Member since ${new Date(user.created_at).toLocaleDateString()}`;
+    const profileId = $("profileId");
+    if (profileId) profileId.textContent = user.id;
+    const editName = $("profileEditName");
+    const editEmail = $("profileEditEmail");
+    if (editName) editName.value = user.name;
+    if (editEmail) editEmail.value = user.email;
     return user;
+}
+
+async function initProfile() {
+    const user = await loadUser();
+    if (!user) return;
+    $("saveProfileButton").addEventListener("click", async () => {
+        const button = $("saveProfileButton");
+        const message = $("profileMessage");
+        const name = $("profileEditName").value.trim();
+        const email = $("profileEditEmail").value.trim().toLowerCase();
+        if (!name || !email) {
+            message.textContent = "Name and email are required.";
+            message.className = "error-message";
+            return;
+        }
+        button.disabled = true;
+        button.textContent = "Saving...";
+        try {
+            const data = await responseData(await fetch("/api/profile", {
+                method: "PUT",
+                headers: headers(),
+                body: JSON.stringify({ name, email })
+            }));
+            message.textContent = data.message;
+            message.className = "success-message";
+            await loadUser();
+        } catch (error) {
+            message.textContent = error.message;
+            message.className = "error-message";
+        } finally {
+            button.disabled = false;
+            button.innerHTML = "Save changes <span>→</span>";
+        }
+    });
+}
+
+async function initForgotPassword() {
+    const user = await loadUser();
+    if (user) $("resetEmail").value = user.email;
+    $("resetPasswordButton").addEventListener("click", async () => {
+        const email = $("resetEmail").value.trim().toLowerCase();
+        const password = $("resetPassword").value;
+        const confirmation = $("resetPasswordConfirm").value;
+        const message = $("resetMessage");
+        if (!email || !password || !confirmation) {
+            message.textContent = "Complete all password reset fields.";
+            message.className = "error-message";
+            return;
+        }
+        if (password.length < 6) {
+            message.textContent = "New password must be at least 6 characters.";
+            message.className = "error-message";
+            return;
+        }
+        if (password !== confirmation) {
+            message.textContent = "The passwords do not match.";
+            message.className = "error-message";
+            return;
+        }
+        const button = $("resetPasswordButton");
+        button.disabled = true;
+        button.textContent = "Changing password...";
+        try {
+            const data = await responseData(await fetch("/api/forgot-password", {
+                method: "POST",
+                headers: headers(),
+                body: JSON.stringify({ email, new_password: password })
+            }));
+            message.textContent = data.message;
+            message.className = "success-message";
+            $("resetPassword").value = "";
+            $("resetPasswordConfirm").value = "";
+        } catch (error) {
+            message.textContent = error.message;
+            message.className = "error-message";
+        } finally {
+            button.disabled = false;
+            button.innerHTML = "Change password <span>→</span>";
+        }
+    });
 }
 
 function initAuthPage() {
@@ -76,17 +165,63 @@ function initAuthPage() {
 async function initConverter() {
     await loadUser();
     $("swapButton").addEventListener("click", () => { const source = $("sourceLanguage").value; $("sourceLanguage").value = $("targetLanguage").value; $("targetLanguage").value = source; });
-    $("clearButton").addEventListener("click", () => { $("inputCode").value = ""; $("outputCode").value = ""; $("statusMessage").textContent = ""; });
-    $("copyButton").addEventListener("click", async () => { if ($("outputCode").value) { await navigator.clipboard.writeText($("outputCode").value); $("statusMessage").textContent = "Code copied to clipboard."; } });
+    $("clearButton").addEventListener("click", () => {
+        stopOutputAnimation();
+        $("inputCode").value = "";
+        $("outputCode").value = "";
+        $("outputCode").dataset.fullCode = "";
+        updateOutputProgress(0, 0);
+        $("statusMessage").textContent = "";
+    });
+    $("copyButton").addEventListener("click", async () => {
+        const completeCode = $("outputCode").dataset.fullCode || $("outputCode").value;
+        if (completeCode) {
+            await navigator.clipboard.writeText(completeCode);
+            $("statusMessage").textContent = "Complete converted code copied.";
+        }
+    });
     $("convertButton").addEventListener("click", async () => {
         const source = $("sourceLanguage").value, target = $("targetLanguage").value, code = $("inputCode").value, status = $("statusMessage");
         if (!source || !target || !code.trim()) return (status.textContent = "Select both languages and enter code first.");
         if (source === target) return (status.textContent = "Choose two different languages.");
         const button = $("convertButton"); button.disabled = true; status.textContent = "AI is converting your code...";
-        try { const data = await responseData(await fetch("/convert", { method: "POST", headers: headers(), body: JSON.stringify({ source_language: source, target_language: target, code }) })); $("outputCode").value = data.converted_code; status.textContent = "Conversion complete."; }
+        try {
+            const data = await responseData(await fetch("/convert", { method: "POST", headers: headers(), body: JSON.stringify({ source_language: source, target_language: target, code }) }));
+            animateOutputCode(data.converted_code);
+            status.textContent = "Conversion complete. Writing the result line by line...";
+        }
         catch (error) { status.textContent = error.message; if (error.message.toLowerCase().includes("token")) logout(); }
         finally { button.disabled = false; }
     });
+}
+
+function stopOutputAnimation() {
+    if (outputAnimationTimer) {
+        clearInterval(outputAnimationTimer);
+        outputAnimationTimer = null;
+    }
+}
+
+function updateOutputProgress(current, total) {
+    const progress = $("outputProgress");
+    if (progress) progress.textContent = total ? `Lines ${current}/${total}` : "Ready for output";
+}
+
+function animateOutputCode(code) {
+    stopOutputAnimation();
+    const output = $("outputCode");
+    const lines = String(code || "").split("\n");
+    let lineNumber = 0;
+    output.value = "";
+    output.dataset.fullCode = String(code || "");
+    updateOutputProgress(0, lines.length);
+    outputAnimationTimer = setInterval(() => {
+        output.value += (lineNumber ? "\n" : "") + lines[lineNumber];
+        lineNumber += 1;
+        output.scrollTop = output.scrollHeight;
+        updateOutputProgress(lineNumber, lines.length);
+        if (lineNumber >= lines.length) stopOutputAnimation();
+    }, 85);
 }
 
 async function loadHistory() {
@@ -111,4 +246,5 @@ if ($("historyList")) {
     $("clearHistoryButton").addEventListener("click", async () => { if (confirm("Clear all conversion history?")) { await fetch("/history", { method: "DELETE", headers: headers() }); loadHistory(); } });
     loadHistory();
 }
-if ($("profileName")) loadUser().catch(logout);
+if ($("profileName")) initProfile().catch(logout);
+if ($("resetPasswordButton")) initForgotPassword().catch(logout);
