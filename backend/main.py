@@ -139,6 +139,21 @@ def get_current_user(
     return user
 
 
+def require_token(authorization: str = Header(None)):
+    """Read a Bearer token and return its verified payload."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Login required")
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+
+    payload = verify_access_token(token.strip())
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return payload
+
+
 # ==========================
 # FRONTEND
 # ==========================
@@ -151,20 +166,38 @@ def home():
     )
 
 
+@app.get("/converter")
+def converter_page():
+    return FileResponse("frontend/converter.html")
+
+
+@app.get("/profile")
+def profile_page_or_api(authorization: str = Header(None)):
+    if not authorization:
+        return FileResponse("frontend/profile.html")
+
+    payload = require_token(authorization)
+    user = users_collection.find_one({"_id": payload.get("user_id")})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"name": user["name"], "email": user["email"]}
+
+
+@app.get("/history-page")
+def history_page():
+    return FileResponse("frontend/history.html")
+
+
 # ==========================
 # REGISTER
 # ==========================
 
 @app.post("/register")
 def register(user: UserRegister):
-
-    existing_user = (
-        users_collection.find_one(
-            {
-                "email": user.email
-            }
-        )
-    )
+    try:
+        existing_user = users_collection.find_one({"email": user.email})
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
 
 
     if existing_user:
@@ -199,11 +232,10 @@ def register(user: UserRegister):
     }
 
 
-    result = (
-        users_collection.insert_one(
-            user_data
-        )
-    )
+    try:
+        result = users_collection.insert_one(user_data)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
 
 
     return {
@@ -225,14 +257,10 @@ def register(user: UserRegister):
 
 @app.post("/login")
 def login(user: UserLogin):
-
-    existing_user = (
-        users_collection.find_one(
-            {
-                "email": user.email
-            }
-        )
-    )
+    try:
+        existing_user = users_collection.find_one({"email": user.email})
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
 
 
     if not existing_user:
@@ -301,90 +329,6 @@ def login(user: UserLogin):
 # PROFILE
 # ==========================
 
-@app.get("/profile")
-def profile(
-
-    authorization:
-        str = Header(None)
-
-):
-
-    if not authorization:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Login required"
-        )
-
-
-    try:
-
-        token = (
-            authorization.split(
-                " "
-            )[1]
-        )
-
-    except:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
-
-
-    payload = verify_access_token(
-        token
-    )
-
-
-    if not payload:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
-
-
-    user_id = payload.get(
-        "user_id"
-    )
-
-
-    from bson import ObjectId
-
-
-    user = users_collection.find_one(
-
-        {
-            "_id":
-                ObjectId(
-                    user_id
-                )
-        }
-
-    )
-
-
-    if not user:
-
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-
-
-    return {
-
-        "name":
-            user["name"],
-
-        "email":
-            user["email"]
-
-    }
-
-
 # ==========================
 # CONVERT CODE
 # ==========================
@@ -400,30 +344,7 @@ def convert(
 
 ):
 
-    if not authorization:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Please login first"
-        )
-
-
-    token = authorization.split(
-        " "
-    )[1]
-
-
-    payload = verify_access_token(
-        token
-    )
-
-
-    if not payload:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
+    payload = require_token(authorization)
 
 
     user_id = payload.get(
@@ -505,30 +426,7 @@ def history(
 
 ):
 
-    if not authorization:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Login required"
-        )
-
-
-    token = authorization.split(
-        " "
-    )[1]
-
-
-    payload = verify_access_token(
-        token
-    )
-
-
-    if not payload:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
+    payload = require_token(authorization)
 
 
     user_id = payload.get(
@@ -600,33 +498,7 @@ def delete_conversion(
 
 ):
 
-    from bson import ObjectId
-
-
-    if not authorization:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Login required"
-        )
-
-
-    token = authorization.split(
-        " "
-    )[1]
-
-
-    payload = verify_access_token(
-        token
-    )
-
-
-    if not payload:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
+    payload = require_token(authorization)
 
 
     user_id = payload.get(
@@ -639,10 +511,7 @@ def delete_conversion(
 
             {
 
-                "_id":
-                    ObjectId(
-                        conversion_id
-                    ),
+                "_id": conversion_id,
 
                 "user_id":
                     user_id
@@ -683,30 +552,7 @@ def clear_history(
 
 ):
 
-    if not authorization:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Login required"
-        )
-
-
-    token = authorization.split(
-        " "
-    )[1]
-
-
-    payload = verify_access_token(
-        token
-    )
-
-
-    if not payload:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
+    payload = require_token(authorization)
 
 
     user_id = payload.get(

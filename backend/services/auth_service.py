@@ -1,10 +1,11 @@
 import os
+import base64
+import hashlib
+import hmac
 
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
-
-from passlib.context import CryptContext
 
 from jose import jwt, JWTError
 
@@ -13,7 +14,8 @@ load_dotenv()
 
 
 JWT_SECRET_KEY = os.getenv(
-    "JWT_SECRET_KEY"
+    "JWT_SECRET_KEY",
+    "development-only-change-this-secret"
 )
 
 JWT_ALGORITHM = os.getenv(
@@ -29,16 +31,21 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
 )
 
 
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto"
-)
+PASSWORD_ITERATIONS = 310000
 
 
 def hash_password(password: str):
-
-    return pwd_context.hash(
-        password
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PASSWORD_ITERATIONS,
+    )
+    return "pbkdf2_sha256$%d$%s$%s" % (
+        PASSWORD_ITERATIONS,
+        base64.b64encode(salt).decode("ascii"),
+        base64.b64encode(digest).decode("ascii"),
     )
 
 
@@ -47,10 +54,21 @@ def verify_password(
     hashed_password: str
 ):
 
-    return pwd_context.verify(
-        plain_password,
-        hashed_password
-    )
+    try:
+        scheme, iterations, encoded_salt, encoded_digest = hashed_password.split("$", 3)
+        if scheme != "pbkdf2_sha256":
+            return False
+        salt = base64.b64decode(encoded_salt)
+        expected = base64.b64decode(encoded_digest)
+        actual = hashlib.pbkdf2_hmac(
+            "sha256",
+            plain_password.encode("utf-8"),
+            salt,
+            int(iterations),
+        )
+        return hmac.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
 
 
 def create_access_token(data: dict):
