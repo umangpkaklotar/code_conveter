@@ -2,11 +2,44 @@ const $ = (id) => document.getElementById(id);
 const token = () => localStorage.getItem("token");
 const headers = () => ({ "Content-Type": "application/json", ...(token() ? { Authorization: `Bearer ${token()}` } : {}) });
 let outputAnimationTimer = null;
+let quotaCountdownTimer = null;
+
+class ApiError extends Error {
+    constructor(message, status, retryAfter) {
+        super(message);
+        this.status = status;
+        this.retryAfter = retryAfter;
+    }
+}
 
 async function responseData(response) {
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || "Something went wrong.");
+    if (!response.ok) {
+        throw new ApiError(
+            data.detail || "Something went wrong.",
+            response.status,
+            Number(response.headers.get("Retry-After")) || 0,
+        );
+    }
     return data;
+}
+
+function showQuotaMessage(statusElement, error) {
+    if (quotaCountdownTimer) clearInterval(quotaCountdownTimer);
+    let remaining = error.retryAfter || 0;
+    const baseMessage = error.message || "AI quota reached. Please try again later.";
+    const update = () => {
+        statusElement.textContent = remaining > 0
+            ? `${baseMessage} Retry in ${remaining}s.`
+            : baseMessage;
+        if (remaining <= 0) {
+            clearInterval(quotaCountdownTimer);
+            quotaCountdownTimer = null;
+        }
+        remaining -= 1;
+    };
+    update();
+    if (remaining >= 0) quotaCountdownTimer = setInterval(update, 1000);
 }
 
 function logout() {
@@ -204,7 +237,11 @@ async function initConverter() {
             if ($("explanationText")) $("explanationText").textContent = data.explanation || "No explanation was returned.";
             status.textContent = "Conversion complete. Writing the result line by line...";
         }
-        catch (error) { status.textContent = error.message; if (error.message.toLowerCase().includes("token")) logout(); }
+        catch (error) {
+            if (error.status === 429) showQuotaMessage(status, error);
+            else status.textContent = error.message;
+            if (error.message.toLowerCase().includes("token")) logout();
+        }
         finally { button.disabled = false; }
     });
 }
@@ -244,7 +281,8 @@ async function initGenerator() {
             $("generationProgress").textContent = "Complete";
             status.textContent = "Done — this generation is saved in your history.";
         } catch (error) {
-            status.textContent = error.message;
+            if (error.status === 429) showQuotaMessage(status, error);
+            else status.textContent = error.message;
             if (error.message.toLowerCase().includes("token")) logout();
         } finally { button.disabled = false; }
     });
@@ -287,10 +325,11 @@ function updateOutputProgress(current, total) {
 function animateOutputCode(code) {
     stopOutputAnimation();
     const output = $("outputCode");
-    const lines = String(code || "").split("\n");
+    const normalizedCode = String(code || "").replace(/\r\n?/g, "\n");
+    const lines = normalizedCode.split("\n");
     let lineNumber = 0;
     output.value = "";
-    output.dataset.fullCode = String(code || "");
+    output.dataset.fullCode = normalizedCode;
     updateOutputProgress(0, lines.length);
     outputAnimationTimer = setInterval(() => {
         output.value += (lineNumber ? "\n" : "") + lines[lineNumber];

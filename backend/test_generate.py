@@ -103,3 +103,22 @@ def test_generate_endpoint_rejects_empty_prompt(monkeypatch):
 
     assert error.value.status_code == 400
     assert "describe" in error.value.detail.lower()
+
+
+def test_generate_endpoint_returns_retry_message_for_quota_limit(monkeypatch):
+    monkeypatch.setattr(main, "require_token", lambda authorization: {"user_id": "user-7"})
+    monkeypatch.setattr(
+        main,
+        "generate_code",
+        lambda prompt: (_ for _ in ()).throw(code_converter.GeminiRateLimitError(38)),
+    )
+
+    with pytest.raises(main.HTTPException) as error:
+        main.generate(
+            CodeGenerationRequest(prompt="Create a Python API"),
+            authorization="Bearer test-token",
+        )
+
+    assert error.value.status_code == 429
+    assert "38 seconds" in error.value.detail
+    assert error.value.headers["Retry-After"] == "38"

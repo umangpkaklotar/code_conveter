@@ -34,7 +34,8 @@ from backend.models.user_schemas import (
 
 from backend.services.code_converter import (
     convert_code,
-    generate_code
+    generate_code,
+    GeminiRateLimitError,
 )
 
 
@@ -426,20 +427,18 @@ def convert(
     )
 
 
-    conversion_result = (
-        convert_code(
-
-            source_language=
-                request.source_language,
-
-            target_language=
-                request.target_language,
-
-            code=
-                request.code
-
+    try:
+        conversion_result = convert_code(
+            source_language=request.source_language,
+            target_language=request.target_language,
+            code=request.code,
         )
-    )
+    except GeminiRateLimitError as error:
+        raise HTTPException(
+            status_code=429,
+            detail=f"{error} Try again in about {error.retry_after_seconds} seconds.",
+            headers={"Retry-After": str(error.retry_after_seconds)},
+        ) from error
     if isinstance(conversion_result, dict):
         converted_code = conversion_result.get("converted_code", "")
         explanation = conversion_result.get("explanation", "")
@@ -686,9 +685,14 @@ def generate(
 
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Please describe the code you want to generate")
-    generation_result = generate_code(
-        prompt=request.prompt,
-    )
+    try:
+        generation_result = generate_code(prompt=request.prompt)
+    except GeminiRateLimitError as error:
+        raise HTTPException(
+            status_code=429,
+            detail=f"{error} Try again in about {error.retry_after_seconds} seconds.",
+            headers={"Retry-After": str(error.retry_after_seconds)},
+        ) from error
     detected_language = generation_result.get("detected_language", "Unknown")
     generated_code = generation_result.get("converted_code", "")
     explanation = generation_result.get("explanation", "")

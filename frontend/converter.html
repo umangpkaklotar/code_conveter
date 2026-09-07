@@ -21,8 +21,8 @@
                 <div class="language-box"><label for="targetLanguage">Target language</label><input id="targetLanguage" type="text" placeholder="Example: JavaScript" autocomplete="off"></div>
             </div>
             <div class="code-container">
-                <div class="code-box"><div class="code-title"><label for="inputCode">Input code</label><span class="code-hint">Paste the complete program</span></div><textarea id="inputCode" placeholder="Paste your code here..."></textarea></div>
-                <div class="code-box output-box"><div class="code-title"><label for="outputCode">Converted code</label><span id="outputProgress" class="code-hint">Ready for output</span></div><textarea id="outputCode" readonly placeholder="Your converted code will appear here..."></textarea></div>
+                <div class="code-box"><div class="code-title"><label for="inputCode">Input code</label><span class="code-hint">Paste the complete program</span></div><textarea id="inputCode" wrap="off" spellcheck="false" placeholder="Paste your code here..."></textarea></div>
+                <div class="code-box output-box"><div class="code-title"><label for="outputCode">Converted code</label><span id="outputProgress" class="code-hint">Ready for output</span></div><textarea id="outputCode" wrap="off" spellcheck="false" readonly placeholder="Your converted code will appear here..."></textarea></div>
             </div>
             <div class="converter-actions"><button id="clearButton" class="secondary-button" type="button">Clear</button><button id="copyButton" class="secondary-button" type="button">Copy code</button><button id="convertButton" class="convert-button" type="button">Convert code <span>→</span></button></div>
             <p id="statusMessage" class="status-text" role="status"></p>

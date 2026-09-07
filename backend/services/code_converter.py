@@ -1,8 +1,10 @@
 import os
 import json
+import re
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai._gaos.lib.compat_errors import RateLimitError
 
 
 load_dotenv()
@@ -12,6 +14,44 @@ api_key = os.getenv("GEMINI_API_KEY")
 
 
 client = genai.Client(api_key=api_key)
+
+
+class GeminiRateLimitError(RuntimeError):
+    """Raised when Gemini temporarily refuses a request because of quota."""
+
+    def __init__(self, retry_after_seconds=60):
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(
+            "AI quota reached. Please wait and try again, or check your Gemini API billing and limits."
+        )
+
+
+def _strip_code_fences(value):
+    """Remove optional Markdown fences without changing code indentation."""
+    text = str(value or "").strip()
+    match = re.match(r"^```[^\r\n]*\r?\n([\s\S]*?)\r?\n```\s*$", text)
+    return match.group(1).strip("\r\n") if match else text
+
+
+def _parse_json_response(raw_output):
+    """Parse JSON even when the model wraps the response in a code fence."""
+    try:
+        return json.loads(_strip_code_fences(raw_output))
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _create_interaction(prompt):
+    try:
+        return client.interactions.create(
+            model="gemini-3.6-flash",
+            input=prompt,
+        )
+    except RateLimitError as error:
+        message = str(error)
+        retry_match = re.search(r"retry in ([0-9]+(?:\.[0-9]+)?)s", message, re.IGNORECASE)
+        retry_after = int(float(retry_match.group(1))) + 1 if retry_match else 60
+        raise GeminiRateLimitError(retry_after) from error
 
 
 def convert_code(source_language, target_language, code):
@@ -29,8 +69,10 @@ Rules:
 4. Return one valid JSON object with exactly two keys: converted_code and explanation.
 5. converted_code must be complete, runnable code and contain no Markdown fences, labels, or commentary.
 6. Check for missing imports, undefined variables, invalid syntax, and incomplete functions before returning it.
-7. explanation must be plain text with Summary:, Important changes:, and How to run: sections. Use short bullets, not one long paragraph.
-8. Do not add text outside the JSON object.
+7. Preserve meaningful whitespace, indentation, line breaks, and blank lines. Never minify or compress the code.
+8. Organize the file clearly: imports, constants/configuration, functions or classes, and the executable entry point where appropriate.
+9. explanation must be plain text with Summary:, Important changes:, and How to run: sections. Use short bullets, not one long paragraph.
+10. Do not add text outside the JSON object.
 
 Source Language: {source_language}
 
@@ -41,25 +83,19 @@ Source Code:
 {code}
 """
 
-    interaction = client.interactions.create(
-        model="gemini-3.6-flash",
-        input=prompt
-    )
+    interaction = _create_interaction(prompt)
 
     raw_output = interaction.output_text.strip()
-    try:
-        result = json.loads(raw_output)
-        converted_code = str(result.get("converted_code", "")).strip()
-        if converted_code.startswith("```"):
-            converted_code = converted_code.split("\n", 1)[1] if "\n" in converted_code else converted_code
-            converted_code = converted_code.rsplit("```", 1)[0].strip()
+    result = _parse_json_response(raw_output)
+    if isinstance(result, dict):
+        converted_code = _strip_code_fences(result.get("converted_code", ""))
         return {
             "converted_code": converted_code,
             "explanation": str(result.get("explanation", "")).strip(),
         }
-    except (json.JSONDecodeError, TypeError):
+    else:
         return {
-            "converted_code": raw_output,
+            "converted_code": _strip_code_fences(raw_output),
             "explanation": (
                 "Summary:\n"
                 f"- Converted the complete program from {source_language} to {target_language}.\n\n"
@@ -85,37 +121,36 @@ Rules:
 1. Return one valid JSON object with exactly three keys: detected_language, converted_code, and explanation.
 2. detected_language must contain only the language name, such as Python or JavaScript.
 3. converted_code must contain only the code, with no Markdown fences.
-4. explanation must be concise and structured as plain text with these exact sections:
+4. Preserve meaningful whitespace, indentation, line breaks, and blank lines. Never minify or compress the code.
+5. Organize the file clearly: imports, constants/configuration, functions or classes, and the executable entry point where appropriate.
+6. explanation must be concise and structured as plain text with these exact sections:
    Summary:
    Key decisions:
    How to run:
    Each section must contain short bullet points beginning with '-'. Do not write a long paragraph.
-5. Make reasonable assumptions when the request is incomplete and state them under Key decisions.
-6. Include helpful comments in the code only where they improve clarity.
-7. Do not add text outside the JSON object.
+7. Make reasonable assumptions when the request is incomplete and state them under Key decisions.
+8. Include helpful comments in the code only where they improve clarity.
+9. Do not add text outside the JSON object.
 
 User Request:
 
 {prompt}
 """
 
-    interaction = client.interactions.create(
-        model="gemini-3.6-flash",
-        input=generation_prompt
-    )
+    interaction = _create_interaction(generation_prompt)
 
     raw_output = interaction.output_text.strip()
-    try:
-        result = json.loads(raw_output)
+    result = _parse_json_response(raw_output)
+    if isinstance(result, dict):
         return {
             "detected_language": str(result.get("detected_language", "Unknown")),
-            "converted_code": str(result.get("converted_code", "")),
+            "converted_code": _strip_code_fences(result.get("converted_code", "")),
             "explanation": str(result.get("explanation", "")),
         }
-    except (json.JSONDecodeError, TypeError):
+    else:
         return {
             "detected_language": "Unknown",
-            "converted_code": raw_output,
+            "converted_code": _strip_code_fences(raw_output),
             "explanation": (
                 "Summary:\n"
                 "- Code was generated from your request.\n\n"
