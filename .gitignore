@@ -1,6 +1,0 @@
-.env
-.evn
-.venv/
-venv/
-__pycache__/
-backend/*.db
