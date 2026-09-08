@@ -1,2 +1,65 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Profile · CodeShift</title><link rel="stylesheet" href="/static/style.css"></head><body class="app-shell"><header class="site-header"><a class="brand" href="/converter"><span class="brand-icon">✦</span><span>Code<span>Shift</span></span></a><nav class="main-nav"><a class="nav-link" href="/converter">Converter</a><a class="nav-link active" href="/profile">Profile</a><a class="nav-link" href="/history-page">History</a></nav><div class="header-user"><button id="logoutButton" class="logout-button">Log out</button></div></header><main class="page-container narrow-page"><section class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h1>Your profile</h1><p>View and update your personal details securely.</p></div></section><section class="profile-panel"><div class="large-avatar">👤</div><div><p class="eyebrow">SIGNED IN AS</p><h2 id="profileName">Loading...</h2><p id="profileEmail" class="profile-email">Loading...</p><p id="profileCreated" class="profile-note">Member since loading...</p></div></section><section class="profile-edit-card"><div class="section-heading"><div><p class="eyebrow">PERSONAL DETAILS</p><h2>Edit profile</h2></div></div><label for="profileEditName">Full name</label><input id="profileEditName" type="text" autocomplete="name"><label for="profileEditEmail">Email address</label><input id="profileEditEmail" type="email" autocomplete="email"><button id="saveProfileButton" class="primary-button">Save profile changes <span>→</span></button><p id="profileMessage" role="alert"></p><hr><div class="section-heading"><div><p class="eyebrow">SECURITY</p><h2>Password settings</h2></div></div><p class="profile-note">Change your password from the dedicated password page.</p><a class="primary-button profile-link-button" href="/profile/forgot-password">Change or forgot password <span>→</span></a></section><section class="info-grid"><div><span>Account ID</span><strong id="profileId">Loading...</strong></div><div><span>Security</span><strong>JWT protected</strong></div></section></main><script src="/static/script.js"></script></body></html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile · CodeShift</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body class="app-shell">
+    <header class="site-header"><a class="brand" href="/converter"><span
+                class="brand-icon">✦</span><span>Code<span>Shift</span></span></a>
+        <nav class="main-nav"><a class="nav-link" href="/converter">Converter</a><a class="nav-link active"
+                href="/profile">Profile</a><a class="nav-link" href="/history-page">History</a></nav>
+        <div class="header-user"><button id="logoutButton" class="logout-button">Log out</button></div>
+    </header>
+    <main class="page-container narrow-page">
+        <section class="page-heading">
+            <div>
+                <p class="eyebrow">ACCOUNT</p>
+                <h1>Your profile</h1>
+                <p>View and update your personal details securely.</p>
+            </div>
+        </section>
+        <section class="profile-panel">
+            <div class="large-avatar">👤</div>
+            <div>
+                <p class="eyebrow">SIGNED IN AS</p>
+                <h2 id="profileName">Loading...</h2>
+                <p id="profileEmail" class="profile-email">Loading...</p>
+                <p id="profileCreated" class="profile-note">Member since loading...</p>
+            </div>
+        </section>
+        <section class="profile-edit-card">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">PERSONAL DETAILS</p>
+                    <h2>Edit profile</h2>
+                </div>
+            </div><label for="profileEditName">Full name</label><input id="profileEditName" type="text"
+                autocomplete="name"><label for="profileEditEmail">Email address</label><input id="profileEditEmail"
+                type="email" autocomplete="email"><button id="saveProfileButton" class="primary-button">Save profile
+                changes <span>→</span></button>
+            <p id="profileMessage" role="alert"></p>
+            <hr>
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">SECURITY</p>
+                    <h2>Password settings</h2>
+                </div>
+            </div>
+            <p class="profile-note">Change your password from the dedicated password page.</p><a
+                class="primary-button profile-link-button" href="/profile/forgot-password">Change or forgot password
+                <span>→</span></a>
+        </section>
+        <section class="info-grid">
+            <div><span>Account ID</span><strong id="profileId">Loading...</strong></div>
+            <!-- <div><span>Security</span><strong>JWT protected</strong></div> -->
+        </section>
+    </main>
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
