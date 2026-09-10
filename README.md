@@ -12,7 +12,7 @@ developer workspace.
 - Generate runnable code from a natural-language description.
 - Automatically detect the language for generated code.
 - Register accounts and sign in with email and password.
-- Store users and conversion history locally in SQLite.
+- Store users and conversion history in PostgreSQL.
 - View, copy, delete, or clear saved conversion history.
 - Update profile information and change a password.
 - Display a countdown when Gemini rate limits are returned.
@@ -23,7 +23,7 @@ developer workspace.
 - **Backend:** Python, FastAPI, Uvicorn
 - **AI:** Google Gemini through the `google-genai` SDK
 - **Authentication:** JWT access tokens and PBKDF2-SHA256 password hashes
-- **Database:** SQLite using Python's standard-library `sqlite3` module
+- **Database:** PostgreSQL using the `psycopg` driver
 - **Validation:** Pydantic and `email-validator`
 - **Frontend:** HTML, CSS, and vanilla JavaScript
 - **Testing:** Pytest
@@ -34,7 +34,7 @@ developer workspace.
 AI_CODE_CONVERTER/
 ├── backend/
 │   ├── main.py                 FastAPI application and API routes
-│   ├── database.py             SQLite connection and collection-like helpers
+│   ├── database.py             PostgreSQL connection and collection-like helpers
 │   ├── models/
 │   │   ├── schemas.py          Conversion and generation request models
 │   │   └── user_schemas.py     Registration and profile request models
@@ -50,8 +50,8 @@ AI_CODE_CONVERTER/
 └── README.md
 ```
 
-The SQLite database is created automatically at `backend/ai_code_converter.db`
-unless `SQLITE_DB_PATH` points somewhere else. It is ignored by Git.
+The PostgreSQL tables are created automatically when the application first
+connects to the database configured by `DATABASE_URL`.
 
 ## Prerequisites
 
@@ -96,7 +96,7 @@ set these values in `.env`:
 | Variable | Required | Description |
 | --- | --- | --- |
 | `GEMINI_API_KEY` | Yes | Google Gemini API key used for conversion and generation |
-| `SQLITE_DB_PATH` | No | SQLite database path; defaults to `backend/ai_code_converter.db` |
+| `DATABASE_URL` | Yes | PostgreSQL connection string, for example `postgresql://postgres:postgres@localhost:5432/ai_code_converter` |
 | `JWT_SECRET_KEY` | Recommended | Long random secret used to sign access tokens |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Token lifetime; defaults to `1440` minutes |
 
@@ -116,6 +116,20 @@ documentation is available at <http://127.0.0.1:8000/docs>.
 
 The `--reload` option is intended for development. Omit it when running a
 stable local instance.
+
+## Deploy on Render
+
+This repository includes `render.yaml` with a production-safe start command.
+If the service is configured manually in the Render Dashboard, use:
+
+```text
+uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+```
+
+Do not use `--reload` in the Render start command. Render requires the server
+to listen on `0.0.0.0` and the port supplied by its `PORT` environment
+variable. Add the values from `.env.example` as Render environment variables;
+do not commit `.env` or secret values.
 
 ## API routes
 
@@ -168,7 +182,7 @@ pytest
 generation endpoint behavior, validation, and quota errors without making live
 Gemini requests. `backend/test_gemini.py` is an optional manual smoke test; it
 makes a real Gemini request only when run directly and a valid API key is
-configured. `backend/test_sqlite.py` prints basic local database information.
+configured.
 
 ## Security notes
 
@@ -187,7 +201,7 @@ configured. `backend/test_sqlite.py` prints basic local database information.
 - **Missing Gemini key:** confirm that `GEMINI_API_KEY` exists in the root `.env` file.
 - **Quota or rate-limit response:** wait for the retry period or review Gemini
 	project billing and quota settings.
-- **Database path errors:** ensure the configured parent directory is writable.
+- **Database connection errors:** ensure PostgreSQL is running, the database exists, and `DATABASE_URL` contains valid credentials.
 - **PowerShell activation blocked:** run PowerShell with an appropriate local
 	execution policy, or activate the environment from Command Prompt instead.
 

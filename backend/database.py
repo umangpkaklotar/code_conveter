@@ -1,58 +1,69 @@
 import os
-import sqlite3
+import re
 import threading
-from datetime import datetime
-from pathlib import Path
 
 from dotenv import load_dotenv
+from psycopg import connect
+from psycopg.rows import dict_row
 
 
 load_dotenv()
 
 
-DATABASE_PATH = Path(os.getenv("SQLITE_DB_PATH", "backend/ai_code_converter.db"))
-if not DATABASE_PATH.is_absolute():
-    DATABASE_PATH = Path.cwd() / DATABASE_PATH
-DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-_connection = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
-_connection.row_factory = sqlite3.Row
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@localhost:5432/ai_code_converter",
+)
+_connection = None
+_initialized = False
 _lock = threading.RLock()
 
 
+def _get_connection():
+    global _connection
+    if _connection is None or _connection.closed:
+        _connection = connect(DATABASE_URL, row_factory=dict_row)
+    return _connection
+
+
 def _initialize_database():
+    global _initialized
+    if _initialized:
+        return
+
     with _lock:
-        _connection.executescript(
-            """
+        if _initialized:
+            return
+        connection = _get_connection()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id BIGSERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
                 email TEXT NOT NULL UNIQUE,
                 password TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS conversions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id BIGSERIAL PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 source_language TEXT NOT NULL,
                 target_language TEXT NOT NULL,
                 input_code TEXT NOT NULL,
                 converted_code TEXT NOT NULL,
                 explanation TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             );
-            """
-        )
-        columns = {
-            row[1]
-            for row in _connection.execute("PRAGMA table_info(conversions)").fetchall()
-        }
-        if "explanation" not in columns:
-            _connection.execute(
-                "ALTER TABLE conversions ADD COLUMN explanation TEXT NOT NULL DEFAULT ''"
+                """
             )
-        _connection.commit()
+            cursor.execute(
+                "ALTER TABLE conversions ADD COLUMN IF NOT EXISTS explanation "
+                "TEXT NOT NULL DEFAULT ''"
+            )
+        connection.commit()
+        _initialized = True
 
 
 class InsertOneResult:
@@ -65,21 +76,15 @@ class DeleteResult:
         self.deleted_count = deleted_count
 
 
-class SQLiteCursor(list):
+class DatabaseCursor(list):
     def sort(self, key, direction):
         reverse = direction < 0
-        return SQLiteCursor(sorted(self, key=lambda item: item.get(key), reverse=reverse))
+        return DatabaseCursor(sorted(self, key=lambda item: item.get(key), reverse=reverse))
 
 
-class SQLiteCollection:
+class PostgreSQLCollection:
     def __init__(self, table_name):
         self.table_name = table_name
-
-    @staticmethod
-    def _value(value):
-        if isinstance(value, datetime):
-            return value.isoformat()
-        return value
 
     def _where(self, query):
         clauses = []
@@ -88,8 +93,10 @@ class SQLiteCollection:
             column = "id" if key == "_id" else key
             if column == "id" and isinstance(value, str) and value.isdigit():
                 value = int(value)
-            clauses.append(f"{column} = ?")
-            values.append(self._value(value))
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", column):
+                raise ValueError(f"Invalid database column: {column}")
+            clauses.append(f'"{column}" = %s')
+            values.append(value)
         return (" AND ".join(clauses) or "1 = 1"), values
 
     @staticmethod
@@ -99,75 +106,79 @@ class SQLiteCollection:
         return item
 
     def find_one(self, query):
+        _initialize_database()
         where, values = self._where(query)
         with _lock:
-            row = _connection.execute(
-                f"SELECT * FROM {self.table_name} WHERE {where} LIMIT 1",
-                values,
-            ).fetchone()
+            with _get_connection().cursor() as cursor:
+                cursor.execute(f"SELECT * FROM {self.table_name} WHERE {where} LIMIT 1", values)
+                row = cursor.fetchone()
         return self._row_to_dict(row) if row else None
 
     def insert_one(self, document):
-        data = {
-            key: self._value(value)
-            for key, value in document.items()
-            if key != "_id"
-        }
+        _initialize_database()
+        data = {key: value for key, value in document.items() if key != "_id"}
         columns = ", ".join(data)
-        placeholders = ", ".join("?" for _ in data)
+        placeholders = ", ".join("%s" for _ in data)
         with _lock:
-            cursor = _connection.execute(
-                f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders})",
-                list(data.values()),
-            )
-            _connection.commit()
-        return InsertOneResult(cursor.lastrowid)
+            with _get_connection().cursor() as cursor:
+                cursor.execute(
+                    f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders}) RETURNING id",
+                    list(data.values()),
+                )
+                inserted_id = cursor.fetchone()["id"]
+            _get_connection().commit()
+        return InsertOneResult(inserted_id)
 
     def find(self, query):
+        _initialize_database()
         where, values = self._where(query)
         with _lock:
-            rows = _connection.execute(
-                f"SELECT * FROM {self.table_name} WHERE {where}",
-                values,
-            ).fetchall()
-        return SQLiteCursor(self._row_to_dict(row) for row in rows)
+            with _get_connection().cursor() as cursor:
+                cursor.execute(f"SELECT * FROM {self.table_name} WHERE {where}", values)
+                rows = cursor.fetchall()
+        return DatabaseCursor(self._row_to_dict(row) for row in rows)
 
     def delete_one(self, query):
+        _initialize_database()
         where, values = self._where(query)
         with _lock:
-            cursor = _connection.execute(
-                f"DELETE FROM {self.table_name} WHERE {where} LIMIT 1",
-                values,
-            )
-            _connection.commit()
-        return DeleteResult(cursor.rowcount)
+            with _get_connection().cursor() as cursor:
+                cursor.execute(
+                    f"DELETE FROM {self.table_name} WHERE id = "
+                    f"(SELECT id FROM {self.table_name} WHERE {where} LIMIT 1)",
+                    values,
+                )
+                deleted_count = cursor.rowcount
+            _get_connection().commit()
+        return DeleteResult(deleted_count)
 
     def delete_many(self, query):
+        _initialize_database()
         where, values = self._where(query)
         with _lock:
-            cursor = _connection.execute(
-                f"DELETE FROM {self.table_name} WHERE {where}",
-                values,
-            )
-            _connection.commit()
-        return DeleteResult(cursor.rowcount)
+            with _get_connection().cursor() as cursor:
+                cursor.execute(f"DELETE FROM {self.table_name} WHERE {where}", values)
+                deleted_count = cursor.rowcount
+            _get_connection().commit()
+        return DeleteResult(deleted_count)
 
     def update_one(self, query, updates):
+        _initialize_database()
         where, where_values = self._where(query)
         fields = updates.get("$set", updates)
-        assignments = ", ".join(f"{key} = ?" for key in fields)
-        values = [self._value(value) for value in fields.values()]
+        assignments = ", ".join(f'"{key}" = %s' for key in fields)
+        values = list(fields.values())
         with _lock:
-            cursor = _connection.execute(
-                f"UPDATE {self.table_name} SET {assignments} WHERE {where}",
-                values + where_values,
-            )
-            _connection.commit()
-        return DeleteResult(cursor.rowcount)
+            with _get_connection().cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {self.table_name} SET {assignments} WHERE {where}",
+                    values + where_values,
+                )
+                updated_count = cursor.rowcount
+            _get_connection().commit()
+        return DeleteResult(updated_count)
 
 
-_initialize_database()
-
-users_collection = SQLiteCollection("users")
-conversions_collection = SQLiteCollection("conversions")
+users_collection = PostgreSQLCollection("users")
+conversions_collection = PostgreSQLCollection("conversions")
 history_collection = conversions_collection
